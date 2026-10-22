@@ -19,7 +19,7 @@ function feed(s){const div=document.createElement('div');div.className='feed-ent
 function totals(){$('#count').textContent=nodes.length;$('#likes').textContent=nodes.reduce((acc,n)=>acc+n.votes,0).toLocaleString()}
 function add(n,src='demo',quiet=false){if(map.has(n.id))return;Object.assign(n,{vx:0,vy:0,homeX:n.x,homeY:n.y,bornAt:quiet?0:performance.now()});nodes.push(n);map.set(n.id,n);if(!quiet){ripple(n.x,n.y,n.hue);feed(src==='demo'?'DEMO · 新しい生命が誕生':`${n.author} が「${n.title}」を生成`)}totals()}
 function onEvent(e){if(e.type==='create'){if(e.payload.node)add(e.payload.node,'live',initializing)}else if(e.type==='like'){const n=map.get(e.payload.nodeId);if(n){n.votes=Math.max(0,e.payload.votes??n.votes+1);ripple(n.x,n.y,n.hue);if(selected?.id===n.id)panelUpdate();totals()}}}
-function status(s){$('#connection').innerHTML=`<i class="live-dot"></i>${s==='live'?'LIVE · 共有':s==='reconnecting'?'再接続中':'DEMO · ローカル'}`}
+function status(s){if(s==='live'&&simulation){simulation=false;$('#toggleDemo').textContent='自動増殖 OFF'}$('#connection').innerHTML=`<i class="live-dot"></i>${s==='live'?'LIVE · 共有':s==='reconnecting'?'再接続中':'DEMO · ローカル'}`}
 const live=ZokoLive.connection(onEvent,status);
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);scale=w<680?.43:.67;ctx.setTransform(dpr,0,0,dpr,0,0)}
 function worldPos(x,y){return{x:(x-w/2)/scale+camera.x,y:(y-h/2)/scale+camera.y}}
