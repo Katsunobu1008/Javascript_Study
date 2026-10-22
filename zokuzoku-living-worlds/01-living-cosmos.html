@@ -19,7 +19,7 @@ function feed(html){const el=$('#feed'),div=document.createElement('div');div.cl
 function totals(){$('#count').textContent=nodes.length;$('#totalLikes').textContent=nodes.reduce((x,n)=>x+n.votes,0).toLocaleString('ja-JP')}
 function addNode(n,src='demo',quiet=false){if(map.has(n.id))return;n={...n,bornAt:quiet?0:performance.now(),vx:0,vy:0};nodes.push(n);map.set(n.id,n);if(!quiet){ripples.push({x:n.x,y:n.y,at:performance.now(),hue:n.hue});if(src==='demo')feed('DEMO · 新しい作品が生まれました');else feed(`${n.author||'誰か'}が「${n.title}」を生成`);if(follow)flyTo(n,true)}totals()}
 function onEvent(e){if(e.type==='create'){const n=e.payload?.node;if(n)addNode(n,'live',initializing)}else if(e.type==='like'){const n=map.get(e.payload?.nodeId);if(n){n.votes=Math.max(0,Number(e.payload.votes??(n.votes+1)));ripples.push({x:n.x,y:n.y,at:performance.now(),hue:n.hue});if(selected?.id===n.id)panelUpdate();totals()}}}
-function status(s){$('#connection').innerHTML=`<i class="live-dot"></i>${s==='live'?'LIVE · 共有':s==='reconnecting'?'再接続中':'DEMO · ローカル'}`}
+function status(s){if(s==='live'&&animateDemo){animateDemo=false;$('#toggleDemo').textContent='自動増殖 OFF'}$('#connection').innerHTML=`<i class="live-dot"></i>${s==='live'?'LIVE · 共有':s==='reconnecting'?'再接続中':'DEMO · ローカル'}`}
 const live=ZokoLive.connection(onEvent,status);
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=w*dpr;canvas.height=h*dpr;canvas.style.width=w+'px';canvas.style.height=h+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
 const ease=t=>1-Math.pow(1-t,4),lerp=(a,b,t)=>a+(b-a)*t;
