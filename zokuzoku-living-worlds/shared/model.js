@@ -17,7 +17,7 @@
     {id:'s10',title:names[10],x:180,y:560,kind:2,hue:44,votes:75,author:'yu',parentIds:['s5']},
     {id:'s11',title:names[11],x:655,y:-430,kind:4,hue:216,votes:19,author:'rei',parentIds:['s3']}
   ];
-  function nodeRadius(v,mode='cosmos'){return (mode==='cosmos'?35:31)+clamp(Math.log2(Math.max(1,v)+1)*5.35,0,64)}
+  function nodeRadius(v,mode='cosmos'){return (mode==='cosmos'?30:28)+clamp(Math.sqrt(Math.max(0,v))*2.75,0,111)}
   function derivedTitle(prompt){let s=(prompt||'').trim();return s?s.slice(0,24):names[Math.floor(Math.random()*names.length)]+'の進化'}
   function makeChild(parents,prompt,author='あなた'){
     const a=parents[0],b=parents[1],phi=rand(0,Math.PI*2),dist=rand(170,280);
@@ -25,7 +25,7 @@
     const cy=parents.reduce((sum,n)=>sum+n.y,0)/parents.length;
     let hue=(a.hue+rand(-85,85)+360)%360;
     if(b)hue=((a.hue+b.hue)/2+rand(-38,38)+360)%360;
-    return {id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),title:derivedTitle(prompt),x:cx+Math.cos(phi)*dist,y:cy+Math.sin(phi)*dist,kind:b?((a.kind+b.kind+1)%6):(a.kind+Math.ceil(rand(1,5)))%6,hue:Math.round(hue),votes:0,author,parentIds:parents.map(n=>n.id),createdAt:Date.now()};
+    return {id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),title:derivedTitle(prompt),x:cx+Math.cos(phi)*dist,y:cy+Math.sin(phi)*dist,kind:b?((a.kind+b.kind+1)%6):(a.kind+Math.ceil(rand(1,5)))%6,hue:Math.round(hue)%360,votes:0,author,parentIds:parents.map(n=>n.id),createdAt:Date.now()};
   }
   function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
   function merch(ctx,kind,hue,size){
