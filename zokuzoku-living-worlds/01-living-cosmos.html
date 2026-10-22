@@ -1,0 +1,77 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090513"><title>ZOKUZOKU — LIVING COSMOS</title><link rel="stylesheet" href="shared/theme.css"><style>
+body{background:#090412}.leftnote{pointer-events:none}.scene-tint{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 25%,#05030b75 100%);z-index:1}.topbar,.leftnote,.bottombar{z-index:6}.topright .pill{color:#ffc5e9}.switchrow{display:flex;gap:8px;margin-top:6px}.switchrow label{font-size:10px;color:#d7c2df;display:flex;align-items:center;gap:5px}.switchrow input{accent-color:#ff95cf}.footmark{position:fixed;left:35px;top:49%;z-index:3;color:#cfa2df50;font-size:10px;letter-spacing:.21em;writing-mode:vertical-rl;pointer-events:none}.panel.open~.eventfeed{opacity:.5}
+</style></head><body>
+<canvas class="world" id="world" aria-label="作品がリアルタイムに増殖するインタラクティブな創作ネットワーク"></canvas><div class="scene-tint"></div>
+<div class="overlay topbar"><a class="brand" href="index.html"><div class="brandicon">✳</div><div><b>ZOKUZOKU</b><small>LIVING WORLDS / 01</small></div></a><div class="topright"><span id="connection" class="pill"><i class="live-dot"></i>DEMO</span><a class="smallbtn" href="02-gravity-jam.html">別の体験 ↗</a><button id="toggleDemo" class="smallbtn">自動増殖 ON</button></div></div>
+<div class="overlay leftnote"><div class="eyebrow">ORGANIC NETWORK × INFINITE DIVE</div><h1>好きが、<br><em>ゾクゾク</em>と。</h1><p>ひとつの作品から、無数の「好き」が生まれる。<br>気になる生命を選んで、思いがけない軌道で中へ飛び込もう。</p><div class="hint">ドラッグで探索 · ホイールでズーム · 作品を選んで進化</div></div>
+<div class="footmark">THE WORLD NEVER STOPS GROWING</div>
+<div id="eventfeed" class="eventfeed"><div class="feed-title">● 今、世界で生まれたもの</div><div id="feed"></div></div>
+<div class="overlay bottombar"><div class="bottomleft"><div><b id="count">12</b> WORKS&nbsp;&nbsp;·&nbsp;&nbsp;<b id="totalLikes">—</b> LOVES</div><div class="switchrow"><label><input type="checkbox" id="follow"> 新しい作品へ飛ぶ</label><label><input type="checkbox" id="showLines" checked> 継承ライン</label></div></div><div class="controls"><button class="control" id="zoomOut" title="縮小">−</button><button class="control" id="reset" title="全体を見る">全体</button><button class="control" id="zoomIn" title="拡大">＋</button><button class="control primary" id="random">↗ 気になる作品へ</button></div></div>
+<aside class="panel" id="panel" aria-label="作品の詳細"><div class="panelhead"><span id="sourceLabel">CREATION DETAILS</span><button class="close" id="close" aria-label="閉じる">×</button></div><div class="panel-art"><canvas id="preview"></canvas></div><h2 id="artTitle">作品名</h2><div id="artBy" class="byline">—</div><div class="votes"><div><strong id="likeNumber">0</strong><small>この作品を「好き」</small></div><button class="control primary" id="love">♡ 好き！</button></div><label class="label" for="prompt">この作品の、どんなところを進化させる？</label><input class="prompt" id="prompt" maxlength="100" placeholder="例：もっとふわふわ、夜空の色に…"><button class="bigbtn" id="evolve">✦ この作品から新しく生み出す</button><div class="gridbtn"><button class="bigbtn outlinebtn" id="mix">↗ 別の作品と融合</button><button class="bigbtn outlinebtn" id="dive">◎ もう一度ダイブ</button></div><p class="micronote">生成ビジュアルは試作用の描画です。画像生成AIには未接続です。デモで追加した作品は共有されません。</p></aside>
+<div class="toast" id="toast" role="status"></div>
+<script src="shared/model.js"></script><script src="shared/live.js"></script><script>
+(()=>{'use strict';
+const M=ZokoModel,$=s=>document.querySelector(s),canvas=$('#world'),ctx=canvas.getContext('2d'),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let w=0,h=0,dpr=1,pan={x:0,y:0,z:.58,r:0},target={x:0,y:0,z:.58,r:0},flight=null,selected=null,hover=null,mixFrom=null,time=0,animateDemo=true,follow=false,lines=true,lastDemo=0,lastTs=0,drag=null,initializing=true;
+const nodes=M.seeds.map(n=>({...n,bornAt:0})),map=new Map(nodes.map(n=>[n.id,n])),ripples=[],particles=[],stars=Array.from({length:235},()=>({x:Math.random(),y:Math.random(),r:.3+Math.random()*1.6,a:Math.random()*6.28}));
+function toast(txt){const el=$('#toast');el.textContent=txt;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2900)}
+function feed(html){const el=$('#feed'),div=document.createElement('div');div.className='feed-entry';div.textContent=html;el.prepend(div);while(el.children.length>3)el.lastChild.remove()}
+function totals(){$('#count').textContent=nodes.length;$('#totalLikes').textContent=nodes.reduce((x,n)=>x+n.votes,0).toLocaleString('ja-JP')}
+function addNode(n,src='demo',quiet=false){if(map.has(n.id))return;n={...n,bornAt:quiet?0:performance.now(),vx:0,vy:0};nodes.push(n);map.set(n.id,n);if(!quiet){ripples.push({x:n.x,y:n.y,at:performance.now(),hue:n.hue});if(src==='demo')feed('DEMO · 新しい作品が生まれました');else feed(`${n.author||'誰か'}が「${n.title}」を生成`);if(follow)flyTo(n,true)}totals()}
+function onEvent(e){if(e.type==='create'){const n=e.payload?.node;if(n)addNode(n,'live',initializing)}else if(e.type==='like'){const n=map.get(e.payload?.nodeId);if(n){n.votes=Math.max(0,Number(e.payload.votes??(n.votes+1)));ripples.push({x:n.x,y:n.y,at:performance.now(),hue:n.hue});if(selected?.id===n.id)panelUpdate();totals()}}}
+function status(s){$('#connection').innerHTML=`<i class="live-dot"></i>${s==='live'?'LIVE · 共有':s==='reconnecting'?'再接続中':'DEMO · ローカル'}`}
+const live=ZokoLive.connection(onEvent,status);
+function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=w*dpr;canvas.height=h*dpr;canvas.style.width=w+'px';canvas.style.height=h+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+const ease=t=>1-Math.pow(1-t,4),lerp=(a,b,t)=>a+(b-a)*t;
+function xy(n){const dx=(n.x-pan.x)*pan.z,dy=(n.y-pan.y)*pan.z,c=Math.cos(pan.r),s=Math.sin(pan.r);return{x:w/2+dx*c-dy*s,y:h/2+dx*s+dy*c}}
+function fromScreen(x,y){const dx=x-w/2,dy=y-h/2,c=Math.cos(-pan.r),s=Math.sin(-pan.r);return{x:pan.x+(dx*c-dy*s)/pan.z,y:pan.y+(dx*s+dy*c)/pan.z}}
+function beginTransform(){ctx.translate(w/2,h/2);ctx.rotate(pan.r);ctx.scale(pan.z,pan.z);ctx.translate(-pan.x,-pan.y)}
+function flyTo(n,soft=false){if(reduced){pan={x:n.x,y:n.y,z:Math.max(.7,Math.min(1.65,130/M.nodeRadius(n.votes))),r:0};target={...pan};return}
+const styles=['spiral','swoop','whip','arc','glide'];let shape=styles[Math.floor(Math.random()*styles.length)];let end={x:n.x,y:n.y,z:soft?.82:M.clamp(160/M.nodeRadius(n.votes),1.08,1.7),r:0},start={...pan};
+const dx=end.x-start.x,dy=end.y-start.y,dist=Math.hypot(dx,dy),side=(Math.random()>.5?1:-1),a=M.rand(.21,.65),offset=Math.min(850,dist*a+100);
+flight={start,end,at:performance.now(),dur:soft?930:M.rand(920,1580),shape,side,offset,nx:-dy/(dist||1),ny:dx/(dist||1)};
+}
+function advanceCamera(now){if(flight){const f=M.clamp((now-flight.at)/flight.dur,0,1),e=ease(f),g=Math.sin(Math.PI*f),s=flight.start,t=flight.end;
+let bend=0;if(flight.shape==='spiral')bend=g*flight.offset*Math.cos(f*3*Math.PI)*.45;else if(flight.shape==='swoop')bend=g*flight.offset;else if(flight.shape==='whip')bend=Math.sin(Math.PI*f*.7)*flight.offset*(1-f);else if(flight.shape==='arc')bend=g*flight.offset*.63;else bend=Math.sin(Math.PI*f*2)*flight.offset*.25;
+pan.x=lerp(s.x,t.x,e)+flight.nx*bend*flight.side;pan.y=lerp(s.y,t.y,e)+flight.ny*bend*flight.side;
+const dip=flight.shape==='whip'?Math.sin(Math.PI*f)*.46:flight.shape==='spiral'?.35*Math.sin(Math.PI*f):0;
+pan.z=lerp(s.z,t.z,e)*(1+dip);pan.r=(flight.shape==='spiral'?Math.sin(Math.PI*f*2)*.09:flight.shape==='arc'?Math.sin(Math.PI*f)*.06:0)*flight.side;
+if(f>=1){flight=null;target={...pan}}}else{pan.x=lerp(pan.x,target.x,.085);pan.y=lerp(pan.y,target.y,.085);pan.z=lerp(pan.z,target.z,.105);pan.r=lerp(pan.r,0,.05)}}
+function background(now){const gr=ctx.createRadialGradient(w*.5,h*.54,20,w*.5,h*.54,Math.max(w,h)*.85);gr.addColorStop(0,'#271031');gr.addColorStop(.47,'#120821');gr.addColorStop(1,'#05040c');ctx.fillStyle=gr;ctx.fillRect(0,0,w,h);
+for(const s of stars){let x=(s.x*w-pan.x*.016*s.r+w*10)%w,y=(s.y*h-pan.y*.017*s.r+h*10)%h;ctx.fillStyle=`rgba(255,215,243,${.14+.22*Math.sin(now*.00045+s.a)**2})`;ctx.beginPath();ctx.arc(x,y,s.r,0,7);ctx.fill()}
+for(let k=0;k<5;k++){const x=w*(.25+k*.15)+Math.sin(now*.00013+k)*50,y=h*(.35+k*.09);const gg=ctx.createRadialGradient(x,y,0,x,y,360);gg.addColorStop(0,`hsla(${285+k*17},90%,55%,.055)`);gg.addColorStop(1,'transparent');ctx.fillStyle=gg;ctx.fillRect(x-360,y-360,720,720)}
+}
+function edges(now){if(!lines)return;for(const n of nodes){for(const id of n.parentIds||[]){let p=map.get(id);if(!p)continue;let mx=(p.x+n.x)/2,my=(p.y+n.y)/2-18,cp=Math.cos(now*.0004+n.hue)*20;
+ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.quadraticCurveTo(mx+cp,my-cp,n.x,n.y);ctx.strokeStyle=`hsla(${n.hue},90%,78%,.21)`;ctx.lineWidth=1.7;ctx.stroke();const k=((now*.00014+(n.hue/360))%1),x=(1-k)*(1-k)*p.x+2*(1-k)*k*(mx+cp)+k*k*n.x,y=(1-k)*(1-k)*p.y+2*(1-k)*k*(my-cp)+k*k*n.y;ctx.fillStyle=`hsla(${n.hue},100%,90%,.78)`;ctx.beginPath();ctx.arc(x,y,2.8,0,7);ctx.fill()}}
+}
+function draw(now){requestAnimationFrame(draw);if(!lastTs)lastTs=now;time=now/1000;advanceCamera(now);ctx.setTransform(dpr,0,0,dpr,0,0);background(now);ctx.save();beginTransform();edges(now);
+for(const n of nodes){const q=xy(n),r=M.nodeRadius(n.votes),screenR=r*pan.z;if(screenR<2||q.x<-(screenR+120)||q.x>w+screenR+120||q.y<-(screenR+120)||q.y>h+screenR+120)continue;
+const age=n.bornAt?(now-n.bornAt)/850:1,scale=reduced?1:M.clamp(age,0,1),pop=1+Math.sin(Math.PI*scale)*.35;let rr=r*(.1+scale*.9)*pop;
+if(n.id===hover?.id)rr*=1.08;M.nodeArt(ctx,n,rr,time,n.id===selected?.id);
+ctx.textAlign='center';ctx.font=`${Math.max(12,Math.min(17,15/pan.z))}px system-ui`;ctx.fillStyle='#ffeaf6';ctx.shadowColor='#1a0828';ctx.shadowBlur=8;ctx.fillText(n.title,n.x,n.y+rr+25);ctx.shadowBlur=0;
+if(n.votes>170){ctx.font=`bold ${Math.max(10,12/pan.z)}px system-ui`;ctx.fillStyle='#ffd0eb';ctx.fillText('♥ '+n.votes.toLocaleString(),n.x,n.y+rr+43)}
+}
+for(let i=ripples.length-1;i>=0;i--){const rr=ripples[i],age=(now-rr.at)/1400;if(age>=1){ripples.splice(i,1);continue}ctx.beginPath();ctx.arc(rr.x,rr.y,35+age*135,0,7);ctx.strokeStyle=`hsla(${rr.hue},100%,79%,${(1-age)*.65})`;ctx.lineWidth=3-age*2;ctx.stroke()}
+ctx.restore();if(now-lastDemo>4700+Math.sin(now*.00013)*1200&&animateDemo&&nodes.length<155){lastDemo=now;simulate()}}
+function hit(x,y){const p=fromScreen(x,y);for(let i=nodes.length-1;i>=0;i--){const n=nodes[i],r=M.nodeRadius(n.votes)*1.1;if(Math.hypot(p.x-n.x,p.y-n.y)<r)return n}return null}
+function preview(){const cv=$('#preview'),c=cv.getContext('2d');cv.width=280*devicePixelRatio;cv.height=180*devicePixelRatio;c.scale(devicePixelRatio,devicePixelRatio);c.clearRect(0,0,280,180);if(!selected)return;const n=selected;c.save();c.translate(140,93);const g=c.createRadialGradient(0,0,0,0,0,82);g.addColorStop(0,`hsla(${n.hue},85%,63%,.42)`);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(-100,-90,200,180);M.merch(c,n.kind,n.hue,134);c.restore()}
+function panelUpdate(){if(!selected)return;$('#sourceLabel').textContent=selected.author?.startsWith('DEMO')?'DEMO CREATION':'CREATION DETAILS';$('#artTitle').textContent=selected.title;$('#artBy').textContent='by '+selected.author+' · '+(selected.parentIds?.length?`${selected.parentIds.length}つの親作品から派生`:'はじまりの作品');$('#likeNumber').textContent=selected.votes.toLocaleString();$('#love').textContent=(localStorage.getItem('zoko:loved:'+selected.id)?'♥ 応援済み':'♡ 好き！');preview()}
+function open(n){selected=n;panelUpdate();$('#panel').classList.add('open');flyTo(n)}
+function close(){$('#panel').classList.remove('open');mixFrom=null;selected=null}
+async function evolve(parents){const prompt=$('#prompt').value;const n=M.makeChild(parents,prompt);try{await live.publish('create',{node:n});const actual=map.get(n.id);if(actual)open(actual);$('#prompt').value='';toast('新しい「好き」が生まれました！')}catch(e){toast(e.message)}}
+function simulate(){const list=nodes.filter(n=>n.votes<1000),p=list[Math.floor(Math.random()*list.length)],title=['もっと透明な','花びらの','夢色の','光る','ゆめかわ','小さな','とびきりの','ふわふわの'][Math.floor(Math.random()*8)]+'アレンジ';const n=M.makeChild([p],title,'DEMO CREATOR');n.id='demo'+Math.random().toString(36).slice(2);n.votes=Math.round(M.rand(1,85));addNode(n,'demo')}
+$('#close').onclick=close;$('#evolve').onclick=()=>selected&&evolve([selected]);$('#love').onclick=async()=>{if(!selected)return;if(localStorage.getItem('zoko:loved:'+selected.id)){toast('この作品はすでに応援しています');return}const n=selected;try{await live.publish('like',{nodeId:n.id});localStorage.setItem('zoko:loved:'+n.id,'1');panelUpdate();toast('好き！が作品の成長につながりました ♡')}catch(e){toast(e.message)}};
+$('#dive').onclick=()=>selected&&flyTo(selected);$('#mix').onclick=()=>{if(!selected)return;mixFrom=selected;$('#panel').classList.remove('open');toast('融合する2つ目の作品を選んでください')};
+$('#toggleDemo').onclick=()=>{animateDemo=!animateDemo;$('#toggleDemo').textContent='自動増殖 '+(animateDemo?'ON':'OFF');toast(animateDemo?'デモ自動増殖を再開':'デモ自動増殖を停止')};
+$('#follow').onchange=e=>follow=e.target.checked;$('#showLines').onchange=e=>lines=e.target.checked;
+$('#reset').onclick=()=>{flight=null;target={x:0,y:45,z:Math.min(w/2100,h/1600,.82),r:0};close();toast('創作宇宙の全体へ')};
+$('#zoomIn').onclick=()=>{flight=null;target.z=M.clamp(target.z*1.35,.22,3)};$('#zoomOut').onclick=()=>{flight=null;target.z=M.clamp(target.z/1.35,.22,3)};
+$('#random').onclick=()=>{const n=nodes[Math.floor(Math.random()*nodes.length)];open(n)};
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,moved:false}});
+canvas.addEventListener('pointermove',e=>{if(drag){const dx=e.clientX-drag.lastX,dy=e.clientY-drag.lastY;if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>5)drag.moved=true;if(drag.moved){flight=null;target.x-=dx/pan.z;target.y-=dy/pan.z;pan.x=target.x;pan.y=target.y}drag.lastX=e.clientX;drag.lastY=e.clientY}else{hover=hit(e.clientX,e.clientY);canvas.style.cursor=hover?'pointer':'grab'}});
+canvas.addEventListener('pointerup',e=>{if(!drag)return;if(!drag.moved){const n=hit(e.clientX,e.clientY);if(n&&mixFrom){const p=mixFrom;mixFrom=null;open(p);if(n.id!==p.id)evolve([p,n]);else toast('異なる作品を選んでください')}else if(n)open(n);else close()}drag=null});
+canvas.addEventListener('wheel',e=>{e.preventDefault();flight=null;const old=pan.z,next=M.clamp(old*Math.exp(-e.deltaY*.0012),.22,3.5),world=fromScreen(e.clientX,e.clientY);target.z=pan.z=next;const moved=fromScreen(e.clientX,e.clientY);target.x=pan.x+=world.x-moved.x;target.y=pan.y+=world.y-moved.y},{passive:false});
+window.addEventListener('keydown',e=>{if(e.key==='Escape')close();if(e.target instanceof HTMLInputElement)return;if(e.key==='+'||e.key==='=')$('#zoomIn').click();if(e.key==='-')$('#zoomOut').click()});window.addEventListener('resize',resize);
+resize();$('#reset').click();lastDemo=performance.now();live.init().then(()=>{initializing=false;totals()});totals();requestAnimationFrame(draw);
+})();
+</script></body></html>
